@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-db_url = "sqlite:///database.db"
+db_url = "sqlite:///backend/database.db"
 
 engine = create_engine(db_url, connect_args={"check_same_thread": False})
 
