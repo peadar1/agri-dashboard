@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum County {
+  CARLOW
+  CAVAN
+  CLARE
+  CORK
+  DONEGAL
+  DUBLIN
+  GALWAY
+  KERRY
+  KILDARE
+  KILKENNY
+  LAOIS
+  LEITRIM
+  LIMERICK
+  LONGFORD
+  LOUTH
+  MAYO
+  MEATH
+  MONAGHAN
+  OFFALY
+  ROSCOMMON
+  SLIGO
+  TIPPERARY
+  WATERFORD
+  WESTMEATH
+  WEXFORD
+  WICKLOW
+}
+
+enum EnterpriseType {
+  BEEF
+  DAIRY
+  SHEEP
+  TILLAGE
+  MIXED
+  FORESTRY
+  OTHER
+}
+
+enum ActivityType {
+  CALL
+  VISIT
+  NOTE
+  SUBMISSION
+  PAYMENT
+}
+
+enum ApplicationStatus {
+  DRAFT
+  GATHERING_DOCS
+  READY
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID_OUT
+}
+
+enum DocumentStatus {
+  MISSING
+  RECEIVED
+  NOT_REQUIRED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  VOID
+}
+
+enum LineKind {
+  FIXED
+  HOURLY
+}
+
+enum PaymentMethod {
+  TRANSFER
+  CHEQUE
+  CASH
+  CARD
+}
+
+model Client {
+  id               String         @id @default(cuid())
+  firstName        String
+  lastName         String
+  phone            String?
+  email            String?
+  addressLine1     String?
+  addressLine2     String?
+  town             String?
+  county           County
+  eircode          String?
+  herdNumber       String         @unique
+  enterpriseType   EnterpriseType
+  totalHectares    Float?
+  eligibleHectares Float?
+  latitude         Float?
+  longitude        Float?
+  agfoodId         String?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  activities   Activity[]
+  applications GrantApplication[]
+  invoices     Invoice[]
+
+  @@index([lastName, firstName])
+  @@index([county])
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  clientId   String
+  type       ActivityType
+  body       String
+  occurredAt DateTime     @default(now())
+  createdAt  DateTime     @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, occurredAt])
+}
+
+model Scheme {
+  id              String  @id @default(cuid())
+  code            String  @unique
+  name            String
+  description     String?
+  defaultFeeCents Int?
+  active          Boolean @default(true)
+
+  documentTemplates SchemeDocumentTemplate[]
+  deadlines         SchemeDeadline[]
+  applications      GrantApplication[]
+}
+
+model SchemeDocumentTemplate {
+  id        String @id @default(cuid())
+  schemeId  String
+  name      String
+  sortOrder Int    @default(0)
+
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+}
+
+model SchemeDeadline {
+  id       String   @id @default(cuid())
+  schemeId String
+  title    String
+  date     DateTime @db.Date
+  notes    String?
+
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+}
+
+model GrantApplication {
+  id                  String            @id @default(cuid())
+  clientId            String
+  schemeId            String
+  year                Int
+  status              ApplicationStatus @default(DRAFT)
+  deadline            DateTime?         @db.Date
+  dafmReference       String?
+  amountAppliedCents  Int?
+  amountApprovedCents Int?
+  submittedAt         DateTime?         @db.Date
+  decisionAt          DateTime?         @db.Date
+  notes               String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  client    Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  scheme    Scheme                @relation(fields: [schemeId], references: [id], onDelete: Restrict)
+  documents ApplicationDocument[]
+  invoices  Invoice[]
+
+  @@index([status])
+  @@index([deadline])
+}
+
+model ApplicationDocument {
+  id            String         @id @default(cuid())
+  applicationId String
+  name          String
+  status        DocumentStatus @default(MISSING)
+  fileName      String?
+  storedName    String?
+  receivedAt    DateTime?
+  sortOrder     Int            @default(0)
+
+  application GrantApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  // Assigned when the invoice is issued so drafts never leave gaps in the sequence.
+  number        String?       @unique
+  clientId      String
+  applicationId String?
+  issueDate     DateTime      @db.Date
+  dueDate       DateTime      @db.Date
+  vatRateBps    Int           @default(2300)
+  status        InvoiceStatus @default(DRAFT)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  client      Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  application GrantApplication? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  lines       InvoiceLine[]
+  payments    Payment[]
+
+  @@index([clientId])
+  @@index([dueDate])
+}
+
+model InvoiceLine {
+  id             String   @id @default(cuid())
+  invoiceId      String
+  description    String
+  kind           LineKind @default(FIXED)
+  quantity       Float    @default(1)
+  unitPriceCents Int
+  sortOrder      Int      @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  invoiceId   String
+  amountCents Int
+  paidAt      DateTime      @db.Date
+  method      PaymentMethod
+  reference   String?
+  createdAt   DateTime      @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model InvoiceSequence {
+  year Int @id
+  last Int @default(0)
+}
+
+model BusinessSettings {
+  id               Int     @id @default(1)
+  businessName     String
+  ownerName        String?
+  address          String
+  phone            String?
+  email            String?
+  vatNumber        String?
+  iban             String?
+  bic              String?
+  paymentTermsDays Int     @default(30)
+  invoiceFooter    String?
+}
